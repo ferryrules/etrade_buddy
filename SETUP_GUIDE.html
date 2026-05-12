@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Setting Up Grandpop's E*TRADE Voice Assistant</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.7;
+    color: #1d1d1f;
+    background: #fff;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+    font-size: 17px;
+  }
+  h1 {
+    font-size: 2em;
+    margin-bottom: 0.3em;
+    color: #1d1d1f;
+    border-bottom: 3px solid #0071e3;
+    padding-bottom: 0.3em;
+  }
+  h1 + p { font-size: 1.1em; color: #555; margin-bottom: 1.5em; }
+  h2 {
+    font-size: 1.5em;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    color: #1d1d1f;
+    border-bottom: 1px solid #d2d2d7;
+    padding-bottom: 0.25em;
+  }
+  h3 {
+    font-size: 1.15em;
+    margin-top: 1.5em;
+    margin-bottom: 0.4em;
+    color: #333;
+  }
+  p { margin-bottom: 0.9em; }
+  ul, ol { margin-bottom: 1em; padding-left: 1.8em; }
+  li { margin-bottom: 0.4em; }
+  li > ul, li > ol { margin-top: 0.3em; margin-bottom: 0.3em; }
+  strong { color: #1d1d1f; }
+  hr { border: none; border-top: 1px solid #d2d2d7; margin: 2em 0; }
+  code {
+    font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+    font-size: 0.92em;
+    background: #f5f5f7;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  pre {
+    background: #1d1d1f;
+    color: #f5f5f7;
+    padding: 16px 20px;
+    border-radius: 10px;
+    overflow-x: auto;
+    margin-bottom: 1em;
+    font-size: 0.95em;
+    line-height: 1.6;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  blockquote {
+    border-left: 4px solid #0071e3;
+    background: #f0f7ff;
+    padding: 12px 16px;
+    margin-bottom: 1em;
+    border-radius: 0 8px 8px 0;
+  }
+  blockquote p { margin-bottom: 0.3em; }
+  blockquote p:last-child { margin-bottom: 0; }
+  .checklist {
+    background: #f5f5f7;
+    border: 2px solid #d2d2d7;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 1.5em 0;
+  }
+  .checklist pre {
+    background: #fff;
+    color: #1d1d1f;
+    border: 1px solid #d2d2d7;
+    font-size: 1em;
+    line-height: 1.8;
+  }
+  @media print {
+    body { padding: 20px; font-size: 12pt; max-width: 100%; }
+    pre { background: #f5f5f7 !important; color: #1d1d1f !important; border: 1px solid #ccc; }
+    h2 { page-break-after: avoid; }
+    .checklist { break-inside: avoid; }
+  }
+  @media (max-width: 600px) {
+    body { padding: 20px 16px; font-size: 16px; }
+    h1 { font-size: 1.6em; }
+    h2 { font-size: 1.3em; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Setting Up Grandpop's E*TRADE Voice Assistant</h1>
+<p>This guide will walk you through everything, step by step. Don't worry if you've never done anything like this before  - just follow along and you'll be fine!</p>
+
+<hr>
+
+<h2>Quick Overview</h2>
+
+<p>Inside the <strong>EtradePythonClient</strong> folder (in Downloads), you'll see three special files you can double-click:</p>
+
+<ol>
+  <li><strong>Setup Voice Assistant</strong>  - double-click this first to install everything (one time only)</li>
+  <li><strong>Test Voice Assistant</strong>  - double-click to test with fake data (no login needed)</li>
+  <li><strong>Start Voice Assistant</strong>  - double-click to run for real each day</li>
+</ol>
+
+<blockquote>
+  <p><strong>First-time warning:</strong> The very first time you double-click one of these files, macOS will show a warning. Depending on your version of macOS, it will look like one of the following:</p>
+
+  <p><strong>If it says the file is from an "unidentified developer" and gives you an "Open" option:</strong></p>
+  <ol>
+    <li><strong>Right-click</strong> (or Control-click) the file instead of double-clicking</li>
+    <li>Click <strong>"Open"</strong> from the menu that appears</li>
+    <li>A popup will appear - click <strong>"Open"</strong> again</li>
+  </ol>
+
+  <p><strong>If it says Apple "cannot verify" the file and only gives you a "Delete" or "Done" option:</strong></p>
+  <ol>
+    <li>Click <strong>"Done"</strong> (do NOT click Delete!)</li>
+    <li>Open <strong>System Settings</strong> (click the Apple menu in the top-left corner)</li>
+    <li>Click <strong>Privacy &amp; Security</strong> in the left sidebar</li>
+    <li>Scroll down - you'll see a message about the file that was blocked</li>
+    <li>Click <strong>"Open Anyway"</strong></li>
+    <li>It may ask for your password - type it in and press Return</li>
+    <li>A final popup will appear - click <strong>"Open"</strong></li>
+  </ol>
+
+  <p>You only need to do this once per file. After that, double-clicking will work normally.</p>
+</blockquote>
+
+<hr>
+
+<h2>What You'll Need Before Starting</h2>
+<ul>
+  <li>Grandpop's Mac computer (a MacBook or iMac  - either works)</li>
+  <li>The Mac needs to be connected to the internet (Wi-Fi or ethernet)</li>
+  <li>Grandpop's E*TRADE account login (username and password)</li>
+  <li>E*TRADE API keys (we'll get these together in Part 1)</li>
+  <li>The iKKEGOL foot pedal (the USB one you ordered)</li>
+  <li>About 30 to45 minutes of time</li>
+</ul>
+
+<hr>
+
+<h2>Part 1: Getting E*TRADE API Keys</h2>
+
+<p>The voice assistant needs special "API keys" to talk to E*TRADE. Think of these like a special password that lets our app read Grandpop's account info. <strong>The app can only read data  - it cannot make trades or move money.</strong></p>
+
+<ol>
+  <li>Open <strong>Google Chrome</strong> (if it's not installed, download it from google.com/chrome)</li>
+  <li>Go to this website: <strong>https://developer.etrade.com</strong></li>
+  <li>Click <strong>"Get Started"</strong> or <strong>"Sign Up"</strong></li>
+  <li>Log in using Grandpop's E*TRADE username and password</li>
+  <li>You'll need to create what's called a "sandbox key" and a "production key":
+    <ul>
+      <li>The <strong>sandbox key</strong> is for testing (it uses fake data)</li>
+      <li>The <strong>production key</strong> is the real one (it uses Grandpop's actual account)</li>
+    </ul>
+  </li>
+  <li>Once you have the keys, you'll see two pieces of information:
+    <ul>
+      <li><strong>Consumer Key</strong>  - a long string of letters and numbers</li>
+      <li><strong>Consumer Secret</strong>  - another long string of letters and numbers</li>
+    </ul>
+  </li>
+  <li><strong>Write these down or copy them somewhere safe.</strong> The setup script will ask you for them.</li>
+</ol>
+
+<blockquote>
+  <p><strong>Important:</strong> These keys are like passwords. Don't share them with anyone or post them online.</p>
+</blockquote>
+
+<hr>
+
+<h2>Part 2: Plug In the Foot Pedal</h2>
+
+<p>Take the iKKEGOL foot pedal out of the box and plug the USB cable into the Mac.</p>
+
+<p><strong>If the Mac only has USB-C ports</strong> (the small oval ones), you'll need a USB-A to USB-C adapter. These are cheap and available at any electronics store, or you may already have one.</p>
+
+<p><strong>If a popup appears</strong> saying "a new keyboard has been detected," just close it or click through it. The pedal works as a keyboard  - that's expected.</p>
+
+<h3>Why we remap the foot pedal (important!)</h3>
+
+<p>Most foot pedals come configured to send the <strong>spacebar</strong> key. This causes two problems:</p>
+
+<ul>
+  <li>If someone presses the spacebar on the regular keyboard while the voice assistant is running, it will accidentally trigger the assistant</li>
+  <li>If the foot pedal is pressed while another app is in front (like Chrome or TextEdit), it will type spaces into that app</li>
+</ul>
+
+<p>To avoid this, the setup script will offer to remap the pedal to send <strong>F13</strong> instead  - a key that doesn't exist on any Mac keyboard, so it can never interfere with anything. It does this using a free app called <strong>Karabiner-Elements</strong>.</p>
+
+<p>The setup script handles most of this automatically. After it installs Karabiner-Elements, you'll need to do one manual step: open Karabiner-Elements and make sure the remapping rule only applies to the foot pedal device (not the regular keyboard). The setup script will explain exactly what to do.</p>
+
+<hr>
+
+<h2>Part 3: Run the Setup (This Does Almost Everything!)</h2>
+
+<p>The setup will automatically install everything the app needs. It will walk you through each step and explain what's happening.</p>
+
+<h3>Step 1: Open the EtradePythonClient folder</h3>
+
+<ol>
+  <li>Open <strong>Finder</strong> (the smiley face icon in the dock at the bottom of the screen)</li>
+  <li>Click <strong>Downloads</strong> in the left sidebar</li>
+  <li>Double-click the <strong>EtradePythonClient</strong> folder to open it</li>
+</ol>
+
+<h3>Step 2: Run the setup</h3>
+
+<p>Find the file called <strong>Setup Voice Assistant</strong> and double-click it. A Terminal window will open and the setup will begin.</p>
+
+<blockquote>
+  <p><strong>If macOS shows a warning:</strong> See the "First-time warning" instructions at the top of this guide for how to get past it.</p>
+</blockquote>
+
+<blockquote>
+  <p><strong>Tip:</strong> If the text in the window is too small, you can make it bigger. Go to the top menu: <strong>Terminal &gt; Settings &gt; Profiles &gt; Text</strong> and change the font size.</p>
+</blockquote>
+
+<h3>Step 3: Follow along</h3>
+
+<p>The setup script will:</p>
+
+<ol>
+  <li><strong>Install Homebrew</strong> (a tool installer)  - it might ask for the computer's password. When you type the password, you won't see any dots or stars on the screen  - that's completely normal! Just type it and press Return. This step can take 5 to10 minutes.</li>
+  <li><strong>Install PortAudio</strong> (lets the app use the microphone)  - takes about a minute.</li>
+  <li><strong>Set up the app's environment</strong>  - installs all the code the app needs. Takes a couple of minutes.</li>
+  <li><strong>Ask for your API keys</strong>  - it will ask you to type or paste the Consumer Key and Consumer Secret from Part 1. If you don't have them yet, you can say "no" and add them later.</li>
+  <li><strong>Detect the foot pedal</strong>  - it will ask you to press the pedal so it can figure out which key it sends. Just step on it when it tells you to.</li>
+  <li><strong>Remind you about permissions</strong>  - it will explain what to click when macOS asks for permission.</li>
+  <li><strong>Error alerts (optional)</strong>  - asks if you want error emails sent to Ferris when something goes wrong.</li>
+  <li><strong>Create shortcut scripts</strong>  - so starting the app later is super easy.</li>
+</ol>
+
+<p>When it's done, you'll see <strong>"Setup complete!"</strong> and a cheat sheet.</p>
+
+<blockquote>
+  <p><strong>If you see red text that says "ERROR":</strong> Take a screenshot and send it to Ferris.</p>
+</blockquote>
+
+<hr>
+
+<h2>Part 4: macOS Permissions</h2>
+
+<p>The first time you run the voice assistant, macOS will ask for two permissions. This is macOS being careful about which apps can use the microphone and keyboard  - it's a good thing!</p>
+
+<h3>Permission 1: Microphone</h3>
+
+<p>A popup will appear saying Terminal wants to access the microphone.</p>
+<ul>
+  <li>Click <strong>"OK"</strong> or <strong>"Allow"</strong></li>
+</ul>
+
+<h3>Permission 2: Input Monitoring (for the foot pedal)</h3>
+
+<p>You need to turn this on yourself:</p>
+
+<ol>
+  <li>Click the <strong>Apple menu</strong> (the Apple logo in the top-left corner of the screen)</li>
+  <li>Click <strong>System Settings</strong></li>
+  <li>In the left sidebar, click <strong>Privacy &amp; Security</strong></li>
+  <li>Click <strong>Input Monitoring</strong></li>
+  <li>Find <strong>Terminal</strong> in the list and flip the switch to <strong>ON</strong></li>
+  <li>Close System Settings</li>
+</ol>
+
+<blockquote>
+  <p><strong>After changing permissions:</strong> You need to <strong>close Terminal and reopen it</strong> for the changes to take effect. Close it by pressing <strong>Command + Q</strong> (hold Command, press Q), then open it again from Spotlight.</p>
+</blockquote>
+
+<h3>If you accidentally clicked "Don't Allow" for the microphone:</h3>
+
+<ol>
+  <li>Click the <strong>Apple menu</strong> (top-left corner)</li>
+  <li>Click <strong>System Settings</strong></li>
+  <li>Click <strong>Privacy &amp; Security</strong></li>
+  <li>Click <strong>Microphone</strong></li>
+  <li>Find <strong>Terminal</strong> and flip the switch to <strong>ON</strong></li>
+  <li>Close System Settings and restart Terminal</li>
+</ol>
+
+<hr>
+
+<h2>Part 5: Test It (No E*TRADE Login Needed)</h2>
+
+<p>Before connecting to the real E*TRADE account, let's make sure everything works with fake data.</p>
+
+<h3>Step 1: Start the test</h3>
+
+<p>Go to the <strong>EtradePythonClient</strong> folder in Downloads and double-click <strong>Test Voice Assistant</strong>.</p>
+
+<p>A Terminal window will open and the app will start talking.</p>
+
+<h3>Step 2: What you should hear</h3>
+
+<p>The computer will start talking! It will say:</p>
+<ul>
+  <li>"Voice assistant test mode. Using fake portfolio data."</li>
+  <li>"Press space to talk. Press control C to quit."</li>
+  <li>"Adjusting for background noise." (wait a moment)</li>
+  <li>"Ready! Press your button to ask a question."</li>
+</ul>
+
+<h3>Step 3: Try it out</h3>
+
+<ol>
+  <li><strong>Step on the foot pedal</strong>  - you should hear a beep sound</li>
+  <li><strong>Say clearly:</strong> "What's the price of Apple?"</li>
+  <li><strong>Wait</strong>  - the computer should say something like: "APPLE INC is at $198.50, up $1.51 or 0.77 percent."</li>
+</ol>
+
+<h3>Step 4: Try more questions</h3>
+
+<p>Press the pedal each time before speaking:</p>
+
+<ul>
+  <li>"How much is Tesla worth?"</li>
+  <li>"Tell me about Apple" (this reads a full report with all his favorite info)</li>
+  <li>"How many shares of Rocket Lab?"</li>
+  <li>"What's my balance?"</li>
+  <li>"Read my portfolio"</li>
+  <li>"Help"</li>
+</ul>
+
+<h3>Step 5: If something isn't working</h3>
+
+<p><strong>If you don't hear any sound:</strong></p>
+<ul>
+  <li>Make sure the Mac's volume is turned up (press the volume up key on the keyboard)</li>
+  <li>Check that the sound output is set to the speakers (click the speaker icon in the top menu bar)</li>
+</ul>
+
+<p><strong>If it says "I couldn't hear you clearly":</strong></p>
+<ul>
+  <li>Speak louder or move closer to the computer's microphone</li>
+  <li>You can make it more sensitive  - see the "It keeps hearing background noise" section in Troubleshooting below, but use a <em>lower</em> number like 800 instead of a higher one.</li>
+</ul>
+
+<p><strong>If pressing the foot pedal does nothing:</strong></p>
+<ul>
+  <li>Make sure Terminal has Input Monitoring permission (Part 4)</li>
+  <li>Try unplugging and replugging the pedal</li>
+  <li>Close Terminal, reopen it, and try again</li>
+</ul>
+
+<p><strong>If it says "Speech recognition error":</strong></p>
+<ul>
+  <li>Make sure the Mac is connected to the internet</li>
+</ul>
+
+<h3>Step 6: Stop the test</h3>
+
+<p>Press <strong>Control + C</strong> (hold Control, press C) to stop the program.</p>
+
+<hr>
+
+<h2>Part 6: Run It For Real</h2>
+
+<p>Once the test works, you're ready to connect to Grandpop's real E*TRADE account!</p>
+
+<h3>Step 1: Start the voice assistant</h3>
+
+<p>Go to the <strong>EtradePythonClient</strong> folder in Downloads and double-click <strong>Start Voice Assistant</strong>.</p>
+
+<h3>Step 2: Log in to E*TRADE</h3>
+
+<p>The app will say "Starting authentication. I'll open a browser window for you to log in."</p>
+
+<ol>
+  <li>A Chrome window will open with the E*TRADE login page</li>
+  <li>Log in with Grandpop's E*TRADE username and password</li>
+  <li>After logging in, E*TRADE will show a <strong>verification code</strong> on the screen</li>
+  <li>The app will ask you to say the code</li>
+  <li>Read the code out loud clearly (or type it into Terminal if voice doesn't work)</li>
+  <li>The app will say "Authentication successful"</li>
+</ol>
+
+<blockquote>
+  <p><strong>Note:</strong> You'll need to do this login step once each day Grandpop wants to use the app. The login lasts for the trading day.</p>
+</blockquote>
+
+<h3>Step 3: Using it</h3>
+
+<p>Once logged in, the app will automatically:</p>
+<ul>
+  <li>Find Grandpop's brokerage account</li>
+  <li>Load all his stock positions</li>
+  <li>Say "Ready! Press your button to ask a question."</li>
+</ul>
+
+<p>Now Grandpop can use it on his own:</p>
+
+<ol>
+  <li><strong>Press the foot pedal</strong> (hear a beep)</li>
+  <li><strong>Ask a question</strong> in plain English</li>
+  <li><strong>Listen</strong> to the answer</li>
+  <li><strong>Repeat!</strong></li>
+</ol>
+
+<h3>Things he can ask (press the pedal before each one):</h3>
+
+<p><strong>About specific stocks:</strong></p>
+<ul>
+  <li>"What's the price of Apple?"</li>
+  <li>"How much is my Tesla worth?"</li>
+  <li>"Total gain on Microsoft"</li>
+  <li>"Day's gain on Apple"</li>
+  <li>"Cost per share of Tesla"</li>
+  <li>"How many shares of Apple?"</li>
+  <li>"Dividend on Microsoft"</li>
+  <li>"Annual yield on Apple"</li>
+  <li>"Expense ratio on [fund name]"</li>
+</ul>
+
+<p><strong>Full report (reads all his favorites for one stock):</strong></p>
+<ul>
+  <li>"Tell me about Apple"</li>
+  <li>"Report on Tesla"</li>
+</ul>
+
+<p><strong>About the whole account:</strong></p>
+<ul>
+  <li>"What's my balance?"</li>
+  <li>"Read my portfolio" (reads every stock)</li>
+</ul>
+
+<p><strong>Utility commands:</strong></p>
+<ul>
+  <li>"Refresh" (reloads the latest data)</li>
+  <li>"Open E-Trade" (opens the E*TRADE website in Chrome if he wants to make a trade)</li>
+  <li>"Help" (lists what he can ask)</li>
+</ul>
+
+<hr>
+
+<h2>Daily Startup Cheat Sheet</h2>
+
+<p>Once everything is set up, here's the short version for starting it each day. <strong>Print this out and tape it near the computer!</strong></p>
+
+<div class="checklist">
+<pre><code>DAILY STARTUP
+=============
+1. Open the EtradePythonClient folder (in Downloads)
+2. Double-click "Start Voice Assistant"
+3. When Chrome opens, log in to E*TRADE
+4. Read the verification code out loud
+5. Wait for "Ready!" - then use the foot pedal!
+6. When done, press Control+C in the Terminal window</code></pre>
+</div>
+
+<hr>
+
+<h2>Troubleshooting</h2>
+
+<h3>"I changed something and now it won't start"</h3>
+<p>Close Terminal, reopen it, and try the commands from Part 6 again. If it still doesn't work, take a screenshot of the error and send it to Ferris.</p>
+
+<h3>The app says "I couldn't find any information for [stock]"</h3>
+<p>The stock might not be recognized by name. Try using the ticker symbol instead (like "AAPL" for Apple or "TSLA" for Tesla). The app automatically learns the names of all stocks in Grandpop's portfolio, but stocks not in his portfolio need to be asked about by their ticker symbol.</p>
+
+<h3>The app stopped responding</h3>
+<p>Press <strong>Control + C</strong> to stop it, then start it again using <code>./start.sh</code>.</p>
+
+<h3>The foot pedal stopped working</h3>
+<ol>
+  <li>Unplug it and plug it back in</li>
+  <li>Restart Terminal</li>
+  <li>Try again</li>
+</ol>
+
+<h3>The foot pedal is typing spaces (or other characters) in other apps</h3>
+<p>This means the pedal hasn't been remapped to F13 yet. Run the setup again (double-click <strong>Setup Voice Assistant</strong>) and say "yes" when it asks about remapping, or install <strong>Karabiner-Elements</strong> manually and remap the pedal to F13. See Part 2 of this guide for details.</p>
+
+<h3>The spacebar on the keyboard triggers the voice assistant</h3>
+<p>Same fix  - remap the foot pedal to F13 so the assistant only listens for F13, not the spacebar. See the section above.</p>
+
+<h3>"Something about permissions"</h3>
+<p>Go to <strong>System Settings &gt; Privacy &amp; Security</strong> and make sure Terminal has both <strong>Microphone</strong> and <strong>Input Monitoring</strong> turned ON. Then restart Terminal.</p>
+
+<h3>Chrome says the E*TRADE login is expired</h3>
+<p>This is normal  - the login expires each day. Just stop the app (Control+C) and start it again. It will open a new login page.</p>
+
+<h3>The volume is too loud or too quiet</h3>
+<p>You can change the Mac's volume with the volume keys on the keyboard. The app uses the normal system volume for speaking.</p>
+
+<h3>It keeps hearing background noise</h3>
+<p>If people are talking nearby and it's picking up their voices, you can make the app less sensitive. Edit the <code>start.sh</code> file and change the last line to:</p>
+
+<pre><code>python3 -u voice_assistant.py --button space --volume 2500</code></pre>
+
+<p>The higher the number, the louder you need to speak (but background noise gets filtered out better). The default is 1500. Try values between 800 (very sensitive) and 3000 (only picks up close, loud speech).</p>
+
+<hr>
+
+<h2>Logs &amp; Transcripts</h2>
+
+<p>Every time the voice assistant runs, it saves a complete record of the session in a log file. This includes:</p>
+
+<ul>
+  <li><strong>Everything Grandpop asked</strong> and <strong>everything the app said back</strong> (the full transcript)</li>
+  <li>Any errors that happened, with technical details for debugging</li>
+  <li>Timestamps for every event</li>
+</ul>
+
+<p>The log files are saved in:</p>
+
+<pre><code>~/Downloads/EtradePythonClient/etrade_python_client/logs/</code></pre>
+
+<p>Each file is named like <code>session_20260512_143022.log</code> (the date and time the session started). You can open these in TextEdit to read them.</p>
+
+<h3>Error Email Alerts</h3>
+
+<p>If error alerts were set up during installation (Step 7 of the setup script), the app will automatically email Ferris when something goes wrong. The email includes the error details and the last 200 lines of the log file.</p>
+
+<p><strong>Important:</strong> For email alerts to work, the Mac's <strong>Mail app</strong> needs to be signed into an email account. If Mail isn't set up, the alerts won't send  - but the app will still work fine and save everything to the log files.</p>
+
+<p>If the app hits 5 errors in a row without a successful command in between, it will safely shut itself down and send a critical alert email. This prevents it from getting stuck in a loop. Just restart it with <code>./start.sh</code> if this happens.</p>
+
+<hr>
+
+<h2>Getting Help</h2>
+
+<p>If something goes wrong that isn't covered here, contact Ferris! You can help him by:</p>
+
+<ol>
+  <li><strong>Check the log files</strong> in <code>~/Downloads/EtradePythonClient/etrade_python_client/logs/</code>  - the most recent file has the details</li>
+  <li><strong>Take a screenshot</strong> of any error messages on screen</li>
+  <li>Send both to Ferris  - the log file is especially helpful for figuring out what went wrong</li>
+</ol>
+
+</body>
+</html>
