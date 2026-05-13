@@ -23,6 +23,7 @@ import configparser
 import json
 import logging
 import os
+import re
 import smtplib
 import subprocess
 import sys
@@ -274,8 +275,16 @@ class ETradeVoiceAssistant:
 
     def __init__(self, sandbox=False, button_key="space", volume_threshold=1500,
                  alert_email=None, fallback_button=None):
+        # --sandbox flag wins; otherwise honor the optional ENVIRONMENT setting
+        # in config.ini so you don't have to keep passing the flag every time.
+        if not sandbox:
+            env = config["DEFAULT"].get("ENVIRONMENT", "production").strip().lower()
+            if env == "sandbox":
+                sandbox = True
+                logger.info("Using sandbox endpoint (ENVIRONMENT=sandbox in config.ini)")
         self.sandbox = sandbox
         self.base_url = config["DEFAULT"]["SANDBOX_BASE_URL"] if sandbox else config["DEFAULT"]["PROD_BASE_URL"]
+        logger.info("API base URL: %s", self.base_url)
         self.session = None
         self.accounts = []
         self.account = None
@@ -373,10 +382,15 @@ class ETradeVoiceAssistant:
         return False
 
     def _interactive_authenticate(self):
-        """Full OAuth1 flow with browser + spoken verifier code."""
-        speak("Starting authentication. I'll open a browser window for you to log in.")
-        speak("After logging in, you'll see a verification code on the screen.")
-        speak("Someone nearby will need to read it to you, or use your screen reader to find it.")
+        """
+        Full OAuth1 flow. Strategy for getting the verifier code:
+          1. Auto-detect by polling Chrome's active tab via AppleScript (no
+             human reading required — works as long as Chrome's "Allow
+             JavaScript from Apple Events" setting is enabled).
+          2. Fall back to listening for a spoken code (the original flow).
+          3. Fall back to typed input if speech also fails.
+        """
+        speak("Starting authentication. I'll open the browser for you to log in to E-Trade.")
 
         request_token, request_token_secret = self._safe_get_request_token(self._etrade)
 
@@ -385,9 +399,21 @@ class ETradeVoiceAssistant:
         )
         subprocess.run(["open", "-a", "Google Chrome", authorize_url], check=False)
 
-        speak("Browser opened. Please log in and get the verification code.")
+        speak(
+            "Please log in to E-Trade in the browser window I just opened, "
+            "then click Accept. I'll watch the page and grab the verification "
+            "code automatically — no need to read it to me."
+        )
 
-        code = self._listen_for_code()
+        code = self._wait_for_verifier_in_chrome(timeout=300)
+
+        if not code:
+            speak(
+                "I couldn't read the code from Chrome. "
+                "If you can see the code on the screen, please read it now."
+            )
+            code = self._listen_for_code()
+
         if not code:
             speak("I didn't catch a verification code. Let me try again.")
             code = self._listen_for_code()
@@ -402,6 +428,133 @@ class ETradeVoiceAssistant:
         TokenStore.save(access_token, access_token_secret)
         speak("Authentication successful. I'll remember this so you don't need a code next time.")
         logger.info("OAuth authentication completed (token cached for reuse)")
+
+    # Words that look like verifier codes but aren't — uppercase-only,
+    # 4-8 chars, that show up on E*TRADE's authorize / pre-authorize pages.
+    _VERIFIER_BLACKLIST = {
+        "ETRADE", "TRADE", "OAUTH", "LOGIN", "SUBMIT", "ACCEPT", "CANCEL",
+        "VIEW", "HELP", "ABOUT", "TERMS", "USA", "AND", "FOR", "THE", "WITH",
+        "API", "APIS", "USERID", "PASSWORD", "SIGNIN", "SIGN", "OK", "NO",
+        "YES", "BACK", "NEXT", "DONE", "LOG", "OUT", "PIN",
+    }
+
+    def _wait_for_verifier_in_chrome(self, timeout=300, poll_interval=2):
+        """
+        Watch the active Chrome tab and return the E*TRADE verifier code as
+        soon as it appears on the page. Returns None on timeout, or if Chrome
+        won't let us run JavaScript via Apple Events.
+        """
+        deadline = time.time() + timeout
+        warned_about_permission = False
+        consecutive_errors = 0
+
+        while time.time() < deadline:
+            time.sleep(poll_interval)
+
+            page_text = self._read_active_chrome_page_text()
+            if page_text is None:
+                consecutive_errors += 1
+                if consecutive_errors == 1 and not warned_about_permission:
+                    logger.warning(
+                        "Chrome JavaScript-from-Apple-Events appears to be off. "
+                        "Enable it in Chrome: View -> Developer -> "
+                        "Allow JavaScript from Apple Events."
+                    )
+                    speak(
+                        "I can't read the page in Chrome. "
+                        "I'll fall back to listening for the code."
+                    )
+                    warned_about_permission = True
+                if consecutive_errors >= 3:
+                    return None
+                continue
+
+            consecutive_errors = 0
+            code = self._extract_verifier_from_page(page_text)
+            if code:
+                logger.info("Auto-detected verifier code from Chrome: %s", code)
+                speak(f"Got it. Code is {' '.join(code)}.")
+                return code
+
+        logger.warning("Timed out waiting for verifier code in Chrome")
+        return None
+
+    @staticmethod
+    def _read_active_chrome_page_text():
+        """
+        Return the visible text of Chrome's active tab via AppleScript,
+        including the values of any <input> or <textarea> elements (which is
+        where E*TRADE actually renders the verifier code — document.innerText
+        alone shows blank lines where the code should be).
+
+        Returns None if Chrome isn't running, the page is loading, or
+        Apple-Events JavaScript execution is disabled.
+        """
+        # JavaScript: collect body innerText AND form field values, joined by
+        # spaces. We use single quotes throughout so the whole thing can sit
+        # inside an AppleScript double-quoted string with no escaping.
+        js = (
+            "(function(){"
+            "var t=document.body?document.body.innerText:'';"
+            "var e=document.querySelectorAll('input,textarea');"
+            "for(var i=0;i<e.length;i++){if(e[i].value)t+=' '+e[i].value;}"
+            "return t;"
+            "})()"
+        )
+        script = (
+            'tell application "Google Chrome"\n'
+            '  if (count of windows) is 0 then return ""\n'
+            f'  execute active tab of front window javascript "{js}"\n'
+            'end tell'
+        )
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True, text=True, timeout=5,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+
+        if result.returncode != 0:
+            stderr = (result.stderr or "").lower()
+            if "apple events" in stderr or "not allowed" in stderr or "javascript" in stderr:
+                return None
+            # Other errors (e.g. Chrome not running): treat as transient
+            return ""
+        return result.stdout
+
+    @classmethod
+    def _extract_verifier_from_page(cls, page_text):
+        """
+        Pick the verifier code out of an E*TRADE authorize-success page.
+
+        The page text we get from Chrome is roughly:
+
+            Complete Authorization
+            Copy the following text code by selecting it ...
+            Your verification code is below. Use this Verification Code ...
+            <code from input field, e.g. ABCDE>
+            Review the risks & limitations ...
+
+        Strategy: anchor on the word "verification" and then scan the next
+        chunk of text for the first plausible all-caps alphanumeric token.
+        """
+        if not page_text:
+            return None
+
+        anchor = re.search(r'verif(?:ication|ier|y)', page_text, re.IGNORECASE)
+        if not anchor:
+            return None
+
+        # Scan the rest of the page (everything after the first "verif...") for
+        # the first 4–8 char uppercase token that isn't on the blacklist.
+        tail = page_text[anchor.end():]
+        for match in re.finditer(r'\b([A-Z][A-Z0-9]{3,7})\b', tail):
+            candidate = match.group(1)
+            if candidate not in cls._VERIFIER_BLACKLIST:
+                return candidate
+
+        return None
 
     def _safe_get_request_token(self, etrade):
         """
@@ -516,8 +669,39 @@ class ETradeVoiceAssistant:
         response = self.session.get(url, header_auth=True)
 
         if response.status_code != 200:
+            body = (response.text or "").lower()
+            # Common, fixable case: sandbox keys hitting prod or vice versa.
+            # E*TRADE returns oauth_problem_advice="...can be used only in
+            # SANDBOX environment" or "...PRODUCTION environment".
+            if "sandbox environment" in body and not self.sandbox:
+                speak(
+                    "Your A-P-I keys are sandbox keys, but I'm connecting to "
+                    "the production E-Trade environment. "
+                    "Edit config dot ini and set ENVIRONMENT to sandbox, "
+                    "or use real production keys."
+                )
+                logger.error(
+                    "Sandbox keys used against PROD endpoint. "
+                    "Set ENVIRONMENT=sandbox in config.ini, or use --sandbox."
+                )
+                # Stale token from the wrong environment is now poison; clear it.
+                TokenStore.clear()
+                return False
+            if "production environment" in body and self.sandbox:
+                speak(
+                    "Your A-P-I keys are production keys, but I'm in sandbox mode. "
+                    "Edit config dot ini and set ENVIRONMENT to production, "
+                    "or remove the sandbox flag."
+                )
+                logger.error(
+                    "Production keys used against SANDBOX endpoint. "
+                    "Set ENVIRONMENT=production in config.ini."
+                )
+                TokenStore.clear()
+                return False
             speak("I couldn't load your accounts. Please try again later.")
-            logger.error("Account list failed: %s", response.text)
+            logger.error("Account list failed (HTTP %d): %s",
+                         response.status_code, response.text)
             return False
 
         data = response.json()
@@ -684,6 +868,26 @@ class ETradeVoiceAssistant:
             self._speak_portfolio_summary()
             return
 
+        # Explicit market-quote path for stocks not in the portfolio.
+        # E.g. "lookup tesla", "look up apple", "check the market for nvidia"
+        lookup_match = re.search(
+            r'\b(?:look\s*up|lookup|check\s+the\s+market\s+(?:for|on)?)\s+(.+)',
+            text,
+        )
+        if lookup_match:
+            target = lookup_match.group(1).strip()
+            parsed = parse_query(target) or parse_query(f"price of {target}")
+            if not parsed:
+                speak(f"I couldn't figure out what stock you meant by {target}.")
+                return
+            sym, _ = parsed
+            quote = self.get_market_quote(sym)
+            if quote:
+                self._speak_market_quote(quote, "price", sym)
+            else:
+                speak(f"I couldn't find any market data for {sym}.")
+            return
+
         if "refresh" in text or "reload" in text or "update" in text:
             speak("Refreshing your portfolio.")
             self.refresh_portfolio()
@@ -724,12 +928,12 @@ class ETradeVoiceAssistant:
         position = self.find_position(symbol)
 
         if not position:
-            speak(f"I don't see {symbol} in your portfolio. Let me check the market.")
-            quote = self.get_market_quote(symbol)
-            if quote:
-                self._speak_market_quote(quote, field, symbol)
-            else:
-                speak(f"I couldn't find any information for {symbol}.")
+            speak(f"I don't see {symbol} in your portfolio.")
+            self._speak_portfolio_names()
+            speak(
+                "If you really want a market price for a stock you don't own, "
+                "say lookup followed by the name."
+            )
             return
 
         if field == "summary":
@@ -769,11 +973,8 @@ class ETradeVoiceAssistant:
 
         speak(". ".join(parts) if parts else "No balance information available.")
 
-    def _speak_portfolio_summary(self):
-        if not self.portfolio_cache:
-            speak("Your portfolio is empty.")
-            return
-
+    def _unique_positions(self):
+        """Return the deduped list of positions in self.portfolio_cache."""
         seen = set()
         positions = []
         for pos in self.portfolio_cache.values():
@@ -782,6 +983,26 @@ class ETradeVoiceAssistant:
                 continue
             seen.add(pid)
             positions.append(pos)
+        return positions
+
+    def _speak_portfolio_names(self):
+        """Concise list of stocks in the portfolio (names only, no values)."""
+        positions = self._unique_positions()
+        if not positions:
+            speak("Your portfolio is empty.")
+            return
+        names = []
+        for pos in positions:
+            symbol = pos.get("Product", {}).get("symbol", "")
+            desc = pos.get("symbolDescription", symbol)
+            names.append(desc or symbol)
+        speak(f"Your portfolio has {len(names)} positions: {', '.join(names)}.")
+
+    def _speak_portfolio_summary(self):
+        positions = self._unique_positions()
+        if not positions:
+            speak("Your portfolio is empty.")
+            return
 
         speak(f"You have {len(positions)} positions.")
         for pos in positions:
@@ -1075,6 +1296,7 @@ class ETradeVoiceAssistant:
         speak("Tell me about Microsoft.")
         speak("What's my account balance?")
         speak("Read my portfolio.")
+        speak("Lookup Nvidia, to get a market price for a stock you don't own.")
         speak("Open E-Trade. This opens the website if you want to make a trade.")
         speak("You can ask about: price, value, gain, change, quantity, dividend, expense ratio, annual yield, and more.")
 
@@ -1090,11 +1312,16 @@ class ETradeVoiceAssistant:
         if key == self._button_key or (self._fallback_key and key == self._fallback_key):
             self.button_pressed.set()
 
-    def _handle_error(self, error, context=""):
+    def _handle_error(self, error, context="", recoverable=True):
         """
-        Central error handler. Logs the error, increments the counter,
-        sends an email alert if configured, and gracefully recovers or
-        shuts down if errors are cascading.
+        Central error handler. Logs the error, increments the counter, sends
+        an email alert if configured, and gracefully recovers or shuts down
+        if errors are cascading.
+
+        recoverable=False is for fatal startup errors (auth failed, accounts
+        won't load) where there's no listen loop running for the user to
+        "press the button to try again". In that case we stay quiet — the
+        caller will speak its own goodbye message.
         """
         self._consecutive_errors += 1
         error_msg = f"{context}: {error}" if context else str(error)
@@ -1129,7 +1356,9 @@ class ETradeVoiceAssistant:
             self.running = False
             return
 
-        speak("I ran into a problem, but I'm still here. Press the button to try again.")
+        if recoverable:
+            speak("I ran into a problem, but I'm still here. "
+                  "Press the button to try again.")
 
     def _reset_error_count(self):
         """Call after a successful interaction to reset the error counter."""
@@ -1215,21 +1444,29 @@ class ETradeVoiceAssistant:
             logger.info("Error alerts will be sent to: %s", self.alert_email)
 
         speak("Welcome to your E-Trade voice assistant.")
+        if self.sandbox:
+            speak(
+                "Heads up: I'm in sandbox mode. All prices, balances, and "
+                "stock symbols you hear are fake test data, not your real "
+                "account. Call Elizabeth and she'll change it to your account."
+            )
 
         try:
             self.authenticate()
         except Exception as e:
-            self._handle_error(e, context="Authentication")
-            speak("Authentication failed. Please restart and try again.")
+            self._handle_error(e, context="Authentication", recoverable=False)
+            speak("Authentication failed. To try again, run the same command "
+                  "in Terminal.")
             return
 
         try:
             if not self.load_accounts():
-                speak("Could not load accounts. Exiting.")
+                # load_accounts already spoke a specific error message.
                 return
         except Exception as e:
-            self._handle_error(e, context="Loading accounts")
-            speak("Could not load accounts. Please restart and try again.")
+            self._handle_error(e, context="Loading accounts", recoverable=False)
+            speak("I couldn't load your accounts. To try again, run the "
+                  "same command in Terminal.")
             return
 
         try:

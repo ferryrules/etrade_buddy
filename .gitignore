@@ -234,3 +234,4 @@ etrade_python_client/logs/
 
 # macOS junk
 .DS_Store
+etrade_python_client/config.example.ini
