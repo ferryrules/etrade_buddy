@@ -148,6 +148,95 @@ Log file location on Grandpop's Mac: {log_file_path}
 
 
 # ---------------------------------------------------------------------------
+# Token cache (macOS Keychain) — lets us skip the verifier-code dance until
+# the token actually expires (E*TRADE expires access tokens at midnight ET
+# and after 2 hours of inactivity, but inactivity can be silently renewed).
+# ---------------------------------------------------------------------------
+
+class TokenStore:
+    """
+    Stores the E*TRADE OAuth access token + secret in macOS Keychain.
+
+    We use the `security` command rather than the `keyring` Python package so
+    we don't add a new dependency. The token is encrypted by macOS, tied to
+    grandpa's login keychain, and never lives on disk in plaintext.
+
+    Service / account names are constants so any future tooling (e.g. a
+    "reset-auth" script) can find / delete the entry.
+    """
+
+    SERVICE_NAME = "com.ferryrules.etrade-voice-assistant"
+    ACCOUNT_NAME = "etrade_oauth_token"
+
+    @classmethod
+    def save(cls, access_token, access_token_secret):
+        """Persist the token pair. Overwrites any existing entry."""
+        payload = json.dumps({
+            "access_token": access_token,
+            "access_token_secret": access_token_secret,
+            "saved_at": datetime.now().isoformat(),
+        })
+        try:
+            subprocess.run(
+                [
+                    "security", "add-generic-password",
+                    "-U",
+                    "-s", cls.SERVICE_NAME,
+                    "-a", cls.ACCOUNT_NAME,
+                    "-D", "E*TRADE OAuth token (cached by voice assistant)",
+                    "-w", payload,
+                ],
+                check=True, capture_output=True, text=True,
+            )
+            logger.info("Saved E*TRADE OAuth token to macOS Keychain")
+        except subprocess.CalledProcessError as e:
+            logger.error("Failed to save token to Keychain: %s", e.stderr or e)
+
+    @classmethod
+    def load(cls):
+        """Return (access_token, access_token_secret) or (None, None) if not stored."""
+        try:
+            result = subprocess.run(
+                [
+                    "security", "find-generic-password",
+                    "-s", cls.SERVICE_NAME,
+                    "-a", cls.ACCOUNT_NAME,
+                    "-w",
+                ],
+                check=True, capture_output=True, text=True,
+            )
+            payload = json.loads(result.stdout.strip())
+            token = payload.get("access_token")
+            secret = payload.get("access_token_secret")
+            if token and secret:
+                logger.info(
+                    "Loaded cached E*TRADE OAuth token from Keychain (saved %s)",
+                    payload.get("saved_at", "unknown"),
+                )
+                return token, secret
+        except subprocess.CalledProcessError:
+            logger.info("No cached E*TRADE OAuth token found in Keychain")
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("Cached token entry is corrupt: %s. Clearing it.", e)
+            cls.clear()
+        return None, None
+
+    @classmethod
+    def clear(cls):
+        """Delete the cached token entry. Safe to call when nothing is stored."""
+        result = subprocess.run(
+            [
+                "security", "delete-generic-password",
+                "-s", cls.SERVICE_NAME,
+                "-a", cls.ACCOUNT_NAME,
+            ],
+            check=False, capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            logger.info("Cleared cached E*TRADE OAuth token from Keychain")
+
+
+# ---------------------------------------------------------------------------
 # Speech helpers (with transcript logging)
 # ---------------------------------------------------------------------------
 
@@ -206,26 +295,94 @@ class ETradeVoiceAssistant:
         self._consecutive_errors = 0
 
     def authenticate(self):
-        """Run OAuth1 flow. Requires browser interaction once per session."""
-        etrade = OAuth1Service(
+        """
+        Establish an authenticated E*TRADE OAuth1 session.
+
+        Strategy:
+          1. Build the OAuth1Service from configured consumer key / secret.
+          2. Try to resume a previously saved access token from macOS Keychain
+             (calling /oauth/renew_access_token to make sure it's still valid).
+          3. If no cached token exists or the renew fails (e.g. it's past
+             midnight ET and the token has expired), fall back to the full
+             interactive flow with the verifier code, then save the fresh
+             token for tomorrow.
+        """
+        consumer_key = config["DEFAULT"].get("CONSUMER_KEY", "").strip()
+        consumer_secret = config["DEFAULT"].get("CONSUMER_SECRET", "").strip()
+
+        if (not consumer_key or not consumer_secret
+                or "PLEASE_ENTER" in consumer_key
+                or "PLEASE_ENTER" in consumer_secret):
+            speak(
+                "Your E-Trade API keys are not set up yet. "
+                "Please run the Setup Voice Assistant script and enter your "
+                "Consumer Key and Consumer Secret from developer dot E-Trade dot com."
+            )
+            logger.error(
+                "Authentication aborted: config.ini still contains placeholder API keys"
+            )
+            raise RuntimeError("E*TRADE API keys are not configured in config.ini")
+
+        self._etrade = OAuth1Service(
             name="etrade",
-            consumer_key=config["DEFAULT"]["CONSUMER_KEY"],
-            consumer_secret=config["DEFAULT"]["CONSUMER_SECRET"],
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
             request_token_url="https://api.etrade.com/oauth/request_token",
             access_token_url="https://api.etrade.com/oauth/access_token",
             authorize_url="https://us.etrade.com/e/t/etws/authorize?key={}&token={}",
             base_url="https://api.etrade.com",
         )
 
+        if self._try_resume_saved_session():
+            speak("Welcome back. I'm already logged in to E-Trade from earlier.")
+            logger.info("Resumed E*TRADE session from cached token (no browser login needed)")
+            return
+
+        self._interactive_authenticate()
+
+    def _try_resume_saved_session(self):
+        """
+        Attempt to reuse a token saved in macOS Keychain. Returns True if we
+        end up with a working self.session, False otherwise (in which case the
+        caller should do the full interactive flow).
+        """
+        access_token, access_token_secret = TokenStore.load()
+        if not access_token or not access_token_secret:
+            return False
+
+        try:
+            session = self._etrade.get_session(
+                (access_token, access_token_secret)
+            )
+            renew_url = "https://api.etrade.com/oauth/renew_access_token"
+            response = session.get(renew_url, header_auth=True, timeout=15)
+        except Exception as e:
+            logger.warning("Token renew attempt raised exception: %s", e)
+            return False
+
+        if response.status_code == 200:
+            self.session = session
+            return True
+
+        logger.info(
+            "Cached token is no longer valid (HTTP %d on renew). "
+            "Falling back to interactive login.",
+            response.status_code,
+        )
+        TokenStore.clear()
+        return False
+
+    def _interactive_authenticate(self):
+        """Full OAuth1 flow with browser + spoken verifier code."""
         speak("Starting authentication. I'll open a browser window for you to log in.")
         speak("After logging in, you'll see a verification code on the screen.")
         speak("Someone nearby will need to read it to you, or use your screen reader to find it.")
 
-        request_token, request_token_secret = etrade.get_request_token(
-            params={"oauth_callback": "oob", "format": "json"}
-        )
+        request_token, request_token_secret = self._safe_get_request_token(self._etrade)
 
-        authorize_url = etrade.authorize_url.format(etrade.consumer_key, request_token)
+        authorize_url = self._etrade.authorize_url.format(
+            self._etrade.consumer_key, request_token
+        )
         subprocess.run(["open", "-a", "Google Chrome", authorize_url], check=False)
 
         speak("Browser opened. Please log in and get the verification code.")
@@ -239,11 +396,100 @@ class ETradeVoiceAssistant:
             speak("Still couldn't get the code. You can type it instead.")
             code = input("Enter verification code: ").strip()
 
-        self.session = etrade.get_auth_session(
-            request_token, request_token_secret, params={"oauth_verifier": code}
+        self.session, access_token, access_token_secret = self._safe_get_auth_session(
+            self._etrade, request_token, request_token_secret, code
         )
-        speak("Authentication successful.")
-        logger.info("OAuth authentication completed")
+        TokenStore.save(access_token, access_token_secret)
+        speak("Authentication successful. I'll remember this so you don't need a code next time.")
+        logger.info("OAuth authentication completed (token cached for reuse)")
+
+    def _safe_get_request_token(self, etrade):
+        """
+        Wrap rauth's get_request_token so we can:
+          - Check the HTTP status code first (rauth doesn't)
+          - Decode the response as UTF-8 (rauth uses ASCII via parse_qsl(bytes))
+        Returns (request_token, request_token_secret).
+        """
+        response = etrade.get_raw_request_token(
+            params={"oauth_callback": "oob"}
+        )
+        return self._parse_oauth_response(response, "request token")
+
+    def _safe_get_auth_session(self, etrade, request_token, request_token_secret, code):
+        """
+        Wrap rauth's get_auth_session with the same protections as
+        _safe_get_request_token, then build a real OAuth1Session.
+
+        Returns (session, access_token, access_token_secret) so the caller
+        can persist the raw token pair for later reuse.
+        """
+        response = etrade.get_raw_access_token(
+            request_token,
+            request_token_secret,
+            params={"oauth_verifier": code},
+        )
+        access_token, access_token_secret = self._parse_oauth_response(
+            response, "access token"
+        )
+        session = etrade.get_session((access_token, access_token_secret))
+        return session, access_token, access_token_secret
+
+    @staticmethod
+    def _parse_oauth_response(response, what):
+        """
+        Validate the HTTP response from E*TRADE's OAuth endpoint and parse the
+        token pair out of it. Provides clear, voice-friendly error messages
+        instead of the cryptic 'ascii codec' error from rauth's parse_utf8_qsl
+        when E*TRADE returns an HTML error page (e.g. for bad credentials).
+        """
+        from urllib.parse import parse_qsl
+
+        if response.status_code != 200:
+            try:
+                body = response.content.decode("utf-8", errors="replace")
+            except Exception:
+                body = "(unreadable response body)"
+            logger.error(
+                "E*TRADE OAuth %s request failed: HTTP %d. Body: %s",
+                what, response.status_code, body[:500],
+            )
+            if response.status_code in (401, 403):
+                speak(
+                    "E-Trade rejected the request. "
+                    "Your Consumer Key or Consumer Secret may be wrong, "
+                    "or your developer app may need to be re-approved."
+                )
+            else:
+                speak(
+                    f"E-Trade returned an error while getting the {what}. "
+                    f"H-T-T-P status {response.status_code}."
+                )
+            raise RuntimeError(
+                f"E*TRADE OAuth {what} request failed with HTTP "
+                f"{response.status_code}"
+            )
+
+        try:
+            text = response.content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = response.content.decode("latin-1")
+
+        pairs = dict(parse_qsl(text))
+        token = pairs.get("oauth_token")
+        secret = pairs.get("oauth_token_secret")
+        if not token or not secret:
+            logger.error(
+                "E*TRADE OAuth %s response did not contain expected fields. "
+                "Body: %s", what, text[:500],
+            )
+            speak(
+                f"E-Trade returned an unexpected response while getting the {what}."
+            )
+            raise RuntimeError(
+                f"E*TRADE OAuth {what} response missing oauth_token / "
+                f"oauth_token_secret"
+            )
+        return token, secret
 
     def _listen_for_code(self):
         """Listen for a spoken verification code (alphanumeric)."""
@@ -1028,7 +1274,18 @@ def main():
              "Useful for testing without the foot pedal. "
              "Default: shift (left Shift key). Set to 'none' to disable.",
     )
+    parser.add_argument(
+        "--forget-auth", action="store_true",
+        help="Forget the cached E*TRADE OAuth token (forces a fresh "
+             "browser login next run). Use this if the assistant keeps "
+             "failing right after launch.",
+    )
     args = parser.parse_args()
+
+    if args.forget_auth:
+        TokenStore.clear()
+        print("  [OK] Cached E*TRADE token cleared. Next run will require a fresh login.")
+        return
 
     fallback = args.fallback_button if args.fallback_button != "none" else None
     alert = args.alert_email if args.alert_email != "none" else None
