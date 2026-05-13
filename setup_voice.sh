@@ -397,35 +397,20 @@ echo "     6. Close System Settings and restart Terminal"
 wait_for_enter
 
 # ==========================================================
-# STEP 7: Error alert email (optional)
+# STEP 7: Error alert email
 # ==========================================================
 
-print_step 7 "Error alerts (optional)"
+print_step 7 "Error alerts"
+
+ALERT_EMAIL="ferris@ferryrules.com"
 
 echo "  If something goes wrong while Grandpop is using the app,"
-echo "  it can send you an email so you know about it."
+echo "  an error alert will be sent to: $ALERT_EMAIL"
 echo ""
 echo "  For this to work, the Mac's Mail app needs to be signed"
 echo "  into an email account."
-echo ""
-echo "  Would you like error alerts? (yes/no)"
-read -r WANTS_EMAIL
 
-ALERT_EMAIL=""
-
-if [[ "$WANTS_EMAIL" =~ ^[Yy] ]]; then
-    echo ""
-    echo "  What email address should alerts go to?"
-    read -r ALERT_EMAIL
-    if [ -n "$ALERT_EMAIL" ]; then
-        print_ok "Error alerts will go to: $ALERT_EMAIL"
-    else
-        print_warning "No email entered. You can add this later with --alert-email"
-    fi
-else
-    echo "  No problem! You can add this later by running:"
-    echo "    ./start.sh  (and editing the file to add --alert-email you@example.com)"
-fi
+print_ok "Error alerts will go to: $ALERT_EMAIL"
 
 # ==========================================================
 # STEP 8: Create shortcut launch scripts
@@ -487,18 +472,15 @@ print_ok "Created start.sh (real) and test.sh (practice mode)!"
 
 print_step 9 "Start automatically when the computer turns on"
 
-echo "  Would you like the voice assistant to start"
-echo "  automatically every time the computer turns on?"
+echo "  Setting up auto-start so the voice assistant launches"
+echo "  every time someone logs into this Mac."
 echo ""
-echo "  This means Grandpop won't need to find or click"
-echo "  anything - it will just be ready when he logs in."
+echo "  Grandpop won't need to find or click anything -"
+echo "  it will just be ready when he logs in."
 echo "  (Someone will still need to do the E*TRADE login"
 echo "  once each day when Chrome opens.)"
-echo ""
-echo "  Set up auto-start? (yes/no)"
-read -r WANTS_AUTOSTART
 
-if [[ "$WANTS_AUTOSTART" =~ ^[Yy] ]]; then
+{
     PLIST_NAME="com.ferryrules.etrade-voice-assistant"
     PLIST_DIR="$HOME/Library/LaunchAgents"
     PLIST_FILE="$PLIST_DIR/$PLIST_NAME.plist"
@@ -578,11 +560,7 @@ PLIST_EOF
     echo ""
     echo "  To stop auto-start later, run:"
     echo "    launchctl unload ~/Library/LaunchAgents/$PLIST_NAME.plist"
-else
-    echo ""
-    echo "  No problem! You can always start it by double-clicking"
-    echo "  'Start Voice Assistant' in the etrade_buddy folder."
-fi
+}
 
 # ==========================================================
 # Done!
@@ -615,31 +593,20 @@ echo "    Each file contains a full transcript of what"
 echo "    Grandpop asked and what the app said back,"
 echo "    plus any errors that happened."
 echo ""
-if [ -n "$ALERT_EMAIL" ]; then
 echo "  ERROR ALERTS:"
 echo "    If something goes wrong, an email will be sent to:"
 echo "      $ALERT_EMAIL"
 echo ""
-fi
 echo "  =================================================="
 echo ""
 echo "  DAILY CHEAT SHEET (tape this near the computer!):"
 echo ""
-if [[ "$WANTS_AUTOSTART" =~ ^[Yy] ]]; then
 echo "    1. Turn on the computer and log in"
 echo "    2. The voice assistant starts automatically!"
 echo "    3. When Chrome opens, log in to E*TRADE"
 echo "    4. Read the verification code out loud"
 echo "    5. Press foot pedal to ask questions!"
 echo "    6. Press Control+C in the Terminal window when done"
-else
-echo "    1. Open the etrade_buddy folder"
-echo "    2. Double-click 'Start Voice Assistant'"
-echo "    3. Log in when Chrome opens"
-echo "    4. Read the verification code out loud"
-echo "    5. Press foot pedal to ask questions!"
-echo "    6. Press Control+C in the Terminal window when done"
-fi
 echo ""
 echo "  =================================================="
 echo ""
