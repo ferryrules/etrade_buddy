@@ -45,6 +45,9 @@ wait_for_enter() {
     read -r
 }
 
+# --- Strip Gatekeeper quarantine flags so macOS doesn't block our files ---
+xattr -cr "$SCRIPT_DIR" 2>/dev/null
+
 # --- Start ---
 
 echo ""
@@ -479,6 +482,109 @@ chmod +x "$TEST_SCRIPT"
 print_ok "Created start.sh (real) and test.sh (practice mode)!"
 
 # ==========================================================
+# STEP 9: Auto-start on login (LaunchAgent)
+# ==========================================================
+
+print_step 9 "Start automatically when the computer turns on"
+
+echo "  Would you like the voice assistant to start"
+echo "  automatically every time the computer turns on?"
+echo ""
+echo "  This means Grandpop won't need to find or click"
+echo "  anything - it will just be ready when he logs in."
+echo "  (Someone will still need to do the E*TRADE login"
+echo "  once each day when Chrome opens.)"
+echo ""
+echo "  Set up auto-start? (yes/no)"
+read -r WANTS_AUTOSTART
+
+if [[ "$WANTS_AUTOSTART" =~ ^[Yy] ]]; then
+    PLIST_NAME="com.ferryrules.etrade-voice-assistant"
+    PLIST_DIR="$HOME/Library/LaunchAgents"
+    PLIST_FILE="$PLIST_DIR/$PLIST_NAME.plist"
+    RUNNER_SCRIPT="$SCRIPT_DIR/run_assistant.sh"
+
+    mkdir -p "$PLIST_DIR"
+
+    # Create a runner script that handles updates, venv activation, and logging
+    cat > "$RUNNER_SCRIPT" << 'RUNNER_HEADER'
+#!/bin/bash
+# Auto-start runner for the voice assistant.
+# Called by macOS LaunchAgent on login.
+
+RUNNER_HEADER
+
+    cat >> "$RUNNER_SCRIPT" << RUNNER_BODY
+SCRIPT_DIR="$SCRIPT_DIR"
+RUNNER_BODY
+
+    cat >> "$RUNNER_SCRIPT" << 'RUNNER_REST'
+cd "$SCRIPT_DIR"
+
+# Auto-update from GitHub (silent, non-blocking)
+if [ -d ".git" ] && command -v git &>/dev/null; then
+    timeout 10 git pull --ff-only origin main &>/dev/null 2>&1
+    if [ -f ".venv/bin/pip" ]; then
+        .venv/bin/pip install -r requirements.txt --quiet 2>/dev/null
+    fi
+fi
+
+# Activate venv and launch
+source .venv/bin/activate
+cd etrade_python_client
+
+# Open a real Terminal window so grandpop can hear speech and interact
+osascript -e "
+tell application \"Terminal\"
+    activate
+    do script \"cd '$SCRIPT_DIR' && source .venv/bin/activate && cd etrade_python_client && python3 -u voice_assistant.py --button f13 --fallback-button shift\"
+end tell
+"
+RUNNER_REST
+
+    chmod +x "$RUNNER_SCRIPT"
+
+    # Create the LaunchAgent plist
+    cat > "$PLIST_FILE" << PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$PLIST_NAME</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>$RUNNER_SCRIPT</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$SCRIPT_DIR/etrade_python_client/logs/launchagent_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>$SCRIPT_DIR/etrade_python_client/logs/launchagent_stderr.log</string>
+</dict>
+</plist>
+PLIST_EOF
+
+    # Load the agent (won't start until next login, or we can start it now)
+    launchctl unload "$PLIST_FILE" 2>/dev/null
+    launchctl load "$PLIST_FILE"
+
+    print_ok "Auto-start is set up!"
+    echo ""
+    echo "  The voice assistant will now start automatically"
+    echo "  every time someone logs into this Mac."
+    echo ""
+    echo "  To stop auto-start later, run:"
+    echo "    launchctl unload ~/Library/LaunchAgents/$PLIST_NAME.plist"
+else
+    echo ""
+    echo "  No problem! You can always start it by double-clicking"
+    echo "  'Start Voice Assistant' in the etrade_buddy folder."
+fi
+
+# ==========================================================
 # Done!
 # ==========================================================
 
@@ -519,12 +625,21 @@ echo "  =================================================="
 echo ""
 echo "  DAILY CHEAT SHEET (tape this near the computer!):"
 echo ""
-echo "    1. Open the EtradePythonClient folder (in Downloads)"
+if [[ "$WANTS_AUTOSTART" =~ ^[Yy] ]]; then
+echo "    1. Turn on the computer and log in"
+echo "    2. The voice assistant starts automatically!"
+echo "    3. When Chrome opens, log in to E*TRADE"
+echo "    4. Read the verification code out loud"
+echo "    5. Press foot pedal to ask questions!"
+echo "    6. Press Control+C in the Terminal window when done"
+else
+echo "    1. Open the etrade_buddy folder"
 echo "    2. Double-click 'Start Voice Assistant'"
 echo "    3. Log in when Chrome opens"
 echo "    4. Read the verification code out loud"
 echo "    5. Press foot pedal to ask questions!"
 echo "    6. Press Control+C in the Terminal window when done"
+fi
 echo ""
 echo "  =================================================="
 echo ""

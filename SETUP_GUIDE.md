@@ -273,10 +273,25 @@ Now Grandpop can use it on his own:
 
 Once everything is set up, here's the short version for starting it each day. **Print this out and tape it near the computer!**
 
+**If auto-start was set up during installation:**
+
 ```
-DAILY STARTUP
-=============
-1. Open the EtradePythonClient folder (in Downloads)
+DAILY STARTUP (auto-start)
+==========================
+1. Turn on the computer and log in
+2. The voice assistant starts on its own!
+3. When Chrome opens, log in to E*TRADE
+4. Read the verification code out loud
+5. Wait for "Ready!" - then use the foot pedal!
+6. Press Control+C in the Terminal window when done
+```
+
+**If auto-start was NOT set up:**
+
+```
+DAILY STARTUP (manual)
+======================
+1. Open the etrade_buddy folder
 2. Double-click "Start Voice Assistant"
 3. When Chrome opens, log in to E*TRADE
 4. Read the verification code out loud
